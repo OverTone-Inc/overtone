@@ -1,0 +1,22 @@
+[package]
+name = "overtone-service"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+overtone-core.workspace = true
+overtone-player.workspace = true
+libc.workspace = true
+zbus.workspace = true
+ureq = "3"
+
+[[bin]]
+name = "overtone-ctl"
+path = "src/main.rs"
+
+[[bin]]
+name = "overtone-background"
+path = "src/background.rs"

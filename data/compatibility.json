@@ -1,0 +1,34 @@
+[
+  {
+    "client":"mpv · адаптер Overtone v1",
+    "version":"mpv 0.41.0-6, mpv-mpris 1.3-1",
+    "control":"Play/Pause, Next",
+    "replacement":"Да, для локального аудио",
+    "queue":"Сохраняется",
+    "date":"21.11.2026"
+  },
+  {
+    "client":"mpv · обычный MPRIS",
+    "version":"mpv 0.41.0-6, mpv-mpris 1.3-1",
+    "control":"Play/Pause, OpenUri для HTTP",
+    "replacement":"Ручное открытие URI",
+    "queue":"OpenUri заменяет очередь",
+    "date":"21.11.2026"
+  },
+  {
+    "client":"Яндекс Музыка · установленный пакет Arch",
+    "version":"5.109.1-1",
+    "control":"MPRIS обнаружен. При проверке плеер оставался остановлен",
+    "replacement":"Воспроизведение и замена не подтверждены",
+    "queue":"Не проверена",
+    "date":"21.11.2026"
+  },
+  {
+    "client":"Яндекс Музыка · веб",
+    "version":"—",
+    "control":"Зависит от MPRIS браузера",
+    "replacement":"Веб-адаптер пока отсутствует",
+    "queue":"Не проверена",
+    "date":"—"
+  }
+]

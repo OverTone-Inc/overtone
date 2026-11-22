@@ -1,0 +1,28 @@
+{
+  "suffixes": [
+    "music.yandex.ru",
+    "music.yandex.net",
+    "music.yandex.com",
+    "music.yandex.by",
+    "music.yandex.kz",
+    "music.yandex.uz",
+    "storage.yandex.net",
+    "strm.yandex.net",
+    "strm.yandex.ru",
+    "cdn.yandex.net",
+    "storage.mds.yandex.net",
+    "storage.mdst.yandex.net",
+    "yastatic.net",
+    "passport.yandex.ru",
+    "passport.yandex.com"
+  ],
+  "hosts": [
+    "avatars.mds.yandex.net",
+    "avatars.mdst.yandex.net",
+    "avatars-fast.yandex.net",
+    "id.yandex.ru",
+    "oauth.yandex.ru",
+    "oauth.yandex.com",
+    "sso.ya.ru"
+  ]
+}

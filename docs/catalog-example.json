@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "rules": [
+    {
+      "from": { "type": "local", "value": "/music/A.flac" },
+      "to": { "type": "local", "value": "/music/B.flac" },
+      "enabled": true
+    },
+    {
+      "from": { "type": "yandex", "value": "https://music.yandex.ru/track/123" },
+      "to": null,
+      "enabled": true
+    }
+  ]
+}

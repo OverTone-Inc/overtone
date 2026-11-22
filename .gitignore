@@ -1,0 +1,9 @@
+/target/
+/dist/
+/release/
+/build/
+__pycache__/
+
+/.taste-skill/
+/pkg/
+/src/
