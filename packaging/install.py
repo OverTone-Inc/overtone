@@ -57,8 +57,9 @@ def install(base, binary, command="overtone"):
     ])
     mod = ROOT/"integration/yandex"
     for name in ("launch.py", "main.cjs", "discord.cjs", "preload.js", "renderer.js", "discord-application.json",
-                 "plugins.cjs", "plugin_config.py", "update.py"):
+                 "plugins.cjs", "fckcensor.cjs", "plugin_config.py", "update.py"):
         items.append((mod/name, base/"share/overtone/yandex"/name))
+    items.append((mod/"licenses/FckCensor-MIT.txt", base/"share/licenses/overtone/FckCensor-MIT.txt"))
     for name in ("yandex_music.py", "music-domains.json"):
         items.append((ROOT/"integration/vpn"/name, base/"share/overtone/vpn"/name))
     items.append((ROOT/"docs/vpn.md", base/"share/doc/overtone/docs/vpn.md"))

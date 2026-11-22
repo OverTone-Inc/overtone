@@ -2,12 +2,10 @@
 from datetime import date, timedelta
 import json
 from pathlib import Path
-import re
 import tempfile
-import urllib.request
 
 DEFAULTS = {"fckcensor": False, "time": True, "fonts": False, "font": "Sans",
-            "direct": True, "autoUpdate": True, "replacements": {}}
+            "direct": True, "autoUpdate": True}
 
 
 def load_json(path):
@@ -34,15 +32,6 @@ def save(directory, changes):
     font = changes.get("font")
     if isinstance(font, str):
         current["font"] = font.strip()[:100] or "Sans"
-    if "replacements" in changes:
-        values = changes["replacements"]
-        if not isinstance(values, dict) or len(values) > 5000:
-            raise ValueError("Список замен должен содержать до 5000 пар ID.")
-        full_id = re.compile("[0-9]{1,24}").fullmatch
-        for source, target in values.items():
-            if not isinstance(target, str) or not full_id(source) or not full_id(target) or source == target:
-                raise ValueError("Укажите разные числовые ID исходного и нового трека.")
-        current["replacements"] = values
     write(directory / "plugins.json", current)
     return current
 
@@ -55,27 +44,30 @@ def write(path, value):
         temporary.replace(path)
 
 
-def import_catalog(directory):
-    url = "https://raw.githubusercontent.com/Hazzz895/FckCensorData/main/list_v2.json"
-    request = urllib.request.Request(url, headers={"User-Agent": "Overtone FckCensor adapter"})
-    with urllib.request.urlopen(request, timeout=10) as response:
-        data = response.read(1024 * 1024 + 1)
-    if len(data) > 1024 * 1024:
-        raise ValueError("Каталог FckCensor слишком большой.")
-    value = json.loads(data)
-    tracks = {}
-    for source in value.get("sources", []):
-        for track_id, payload in source.get("tracks", {}).items():
-            if not re.fullmatch(r"[0-9]{1,24}", track_id) or not isinstance(payload, dict):
-                continue
-            fields = {key: text.strip()[:260] for key in ("title", "version", "coverUri")
-                      if isinstance(text := payload.get(key), str) and text.strip()}
-            if fields:
-                tracks[track_id] = fields
-    if not tracks or len(tracks) > 5000:
-        raise ValueError("Каталог FckCensor не содержит поддерживаемых метаданных.")
-    write(directory / "fckcensor-metadata.json", tracks)
-    return len(tracks)
+def font_label(directory):
+    name = load_json(directory / "custom-font.json").get("name", "")
+    return name if isinstance(name, str) else ""
+
+
+def import_font(directory, source):
+    signatures = {".ttf": {b"\x00\x01\x00\x00", b"true"}, ".otf": {b"OTTO"},
+                  ".woff": {b"wOFF"}, ".woff2": {b"wOF2"}}
+    with source.open("rb") as stream:
+        data = stream.read(10 * 1024 * 1024 + 1)
+    if len(data) > 10 * 1024 * 1024 or data[:4] not in signatures.get(source.suffix.lower(), ()):
+        raise ValueError("Выберите шрифт TTF, OTF, WOFF или WOFF2 до 10 МБ.")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=directory) as folder:
+        target = Path(folder) / "custom-font"
+        target.write_bytes(data)
+        target.replace(directory / "custom-font")
+    write(directory / "custom-font.json", {"name": source.name[:160]})
+    return source.name[:160]
+
+
+def clear_font(directory):
+    (directory / "custom-font").unlink(missing_ok=True)
+    (directory / "custom-font.json").unlink(missing_ok=True)
 
 
 def summary(directory):

@@ -6,6 +6,7 @@ const {tmpdir} = require("node:os");
 const {join} = require("node:path");
 const {normalizeCover, activity} = require("../integration/yandex/discord.cjs");
 const {ListeningTime} = require("../integration/yandex/plugins.cjs");
+const {Catalog, detectCodec} = require("../integration/yandex/fckcensor.cjs");
 
 assert.equal(normalizeCover("//avatars.mds.yandex.net/get-music/a/%%"),
     "https://avatars.mds.yandex.net/get-music/a/400x400");
@@ -21,6 +22,27 @@ assert.equal(activity({title:"Track", artist:"Artist", status:"paused"}, {}).ass
 (async () => {
     const folder = mkdtempSync(join(tmpdir(), "overtone-time-test-"));
     try {
+        const base = "raw.githubusercontent.com/Hazzz895/FckCensorData/main/tracks/";
+        const data = {sources: [{tracks: {"42": {title: "Alternate track"}}, tracksStorages: [{
+            urlTemplate: `${base}%%`, trackIds: [42], tracks: {"43": 42, "44": "https://example.com/audio"},
+        }]}]};
+        let probes = 0;
+        const catalog = new Catalog(folder, async (url, options) => {
+            if (url.endsWith("list_v2.json")) return Response.json(data);
+            assert.equal(url, `https://${base}42`);
+            assert.equal(options.headers.Range, "bytes=0-31");
+            probes++;
+            return new Response(Buffer.from("ID3\x04"), {status: 206});
+        });
+        await catalog.refresh();
+        assert.equal(catalog.value.metadata["42"].title, "Alternate track");
+        assert.equal(catalog.media("44"), null);
+        assert.equal((await catalog.media("43")).codec, "mp3");
+        assert.equal((await catalog.media("42")).url, `https://${base}42`);
+        assert.equal(probes, 1);
+        assert.equal(detectCodec(Buffer.from("fLaC")), "flac");
+        assert.equal(detectCodec(Buffer.from("<!DO")), "");
+
         const file = join(folder, "time.json");
         const timer = new ListeningTime(file);
         timer.set(true);

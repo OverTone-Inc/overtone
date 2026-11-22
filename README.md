@@ -1,6 +1,6 @@
 # Overtone
 
-Overtone 0.3.1 добавляет Discord Rich Presence и тексты из LRCLIB в настольную Яндекс Музыку для Linux. В комплекте также есть нативный менеджер MPRIS и адаптер локальной замены аудио в mpv.
+Overtone 0.3.2 добавляет Discord Rich Presence и тексты из LRCLIB в настольную Яндекс Музыку для Linux. В комплекте также есть нативный менеджер MPRIS и адаптер локальной замены аудио в mpv.
 
 ## Мод Яндекс Музыки
 
@@ -13,7 +13,7 @@ Overtone устанавливает мод в `resources/app.asar` устано�
 
 Метод работы со своим архивом основан на подходе [PulseSync Mod](https://github.com/PulseSync-LLC/PulseSync-mod). Настройки Discord ориентированы на [схему PulseSync](https://github.com/PulseSync-LLC/PulseSync-mod/blob/main/webModules/pulsesyncSettings/src/schema/sections/integrations.ts).
 
-Замена аудио через менеджер MPRIS подтверждена для локальных записей в mpv 0.41.0. Встроенный FckCensor применяет свои пары ID внутри Яндекс Музыки.
+Замена аудио через менеджер MPRIS подтверждена для локальных записей в mpv 0.41.0. FckCensor работает внутри Яндекс Музыки с собственным каталогом.
 
 ## Быстрый запуск на Arch
 
@@ -38,9 +38,9 @@ CARGO_BUILD_JOBS=1 cargo build --locked --release
 
 Откройте вкладку «Плагины и обновления» в Overtone. Изменения применятся при следующем запуске Яндекс Музыки.
 
-- **FckCensor** — адаптация для Overtone. Укажите пары ID записей, чтобы штатный плеер запрашивал аудио другой версии и возвращался к оригиналу при ошибке. Кнопка загрузки каталога импортирует названия, версии и обложки. [Исходный аддон](https://github.com/Hazzz895/FckCensor) · [Каталог](https://github.com/Hazzz895/FckCensorData)
+- **FckCensor** — адаптация для Overtone. При включении автоматически загружает каталог оригинального аддона. Штатный плеер запрашивает полную версию замены по имеющейся записи и использует оригинал при отсутствии подходящего источника. [Исходный аддон](https://github.com/Hazzz895/FckCensor) · [Каталог](https://github.com/Hazzz895/FckCensorData)
 - **YandexMusicTime** — локальный счётчик фактического воспроизведения с итогами за сегодня, неделю и всё время. [Исходный аддон](https://github.com/mak7im01/YandexMusicTime)
-- **Custom Fonts** — выбор установленного на компьютере семейства шрифтов для Яндекс Музыки.
+- **Custom Fonts** — выбор системного семейства либо импорт файла TTF, OTF, WOFF или WOFF2 для заголовков, текста и элементов управления.
 - **Яндекс Музыка напрямую** — отдельный локальный процесс стартует вместе с настольным клиентом Linux. Он привязывает HTTPS-соединения Музыки к физическому IPv4-интерфейсу. При отсутствии подходящего интерфейса или при настроенном прокси Chromium сохраняет системный маршрут. Активный режим виден в окне настроек мода. Имена разрешаются системным DNS, браузеры и другие приложения используют свои настройки. [Доменные правила для других клиентов](docs/vpn.md)
 - **Обновления** — лаунчер автоматически проверяет стабильные релизы GitHub. Для установки в `~/.local` доступна автоустановка с проверкой SHA-256. Системный пакет обновляется через менеджер пакетов. [GitHub Releases](https://github.com/devodrag/overtone/releases)
 
@@ -58,7 +58,7 @@ python3 packaging/install.py --user --bin-dir target/release
 ```bash
 mkdir -p release
 PKGDEST="$PWD/release" CARGO_BUILD_JOBS=1 makepkg --clean
-sudo pacman -U ./release/overtone-0.3.1-1-x86_64.pkg.tar.zst
+sudo pacman -U ./release/overtone-0.3.2-1-x86_64.pkg.tar.zst
 
 python3 site/build.py
 python3 -m http.server 8000 --bind 127.0.0.1 --directory dist

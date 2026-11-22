@@ -1,6 +1,6 @@
 # Local Arch package. Run makepkg from the root of a checkout.
 pkgname=overtone
-pkgver=0.3.1
+pkgver=0.3.2
 pkgrel=1
 pkgdesc='Лаунчер и мод Яндекс Музыки, менеджер плееров'
 arch=('x86_64')

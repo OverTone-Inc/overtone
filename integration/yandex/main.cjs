@@ -10,8 +10,12 @@ const configHome = path.isAbsolute(process.env.XDG_CONFIG_HOME || "")
 const directory = path.join(configHome, "overtone");
 const config = path.join(directory, "yandex-mod.json");
 const {load: loadPlugins, ListeningTime} = require("./overtone-plugins.cjs");
+const {Catalog} = require("./overtone-fckcensor.cjs");
 const plugins = loadPlugins(directory);
 const timer = new ListeningTime(path.join(directory, "listening-time.json"));
+const catalog = new Catalog(directory);
+const fontFile = path.join(directory, "custom-font");
+let catalogReady;
 const discordAvailable = typeof applicationId === "string";
 const readyFile = process.env.OVERTONE_READY_FILE;
 delete process.env.OVERTONE_READY_FILE;
@@ -188,6 +192,7 @@ let relay;
 let networkStatus = plugins.direct ? "Обычный маршрут" : "Выключено";
 
 async function configureNetwork(session) {
+    if (plugins.fckcensor && !catalogReady) catalogReady = catalog.refresh();
     if (process.platform !== "linux" || !plugins.direct || relay) return;
     const incompatible = ["proxy-server", "proxy-pac-url", "no-proxy-server", "proxy-auto-detect"];
     if (incompatible.some((flag) => app.commandLine.hasSwitch(flag))) return;
@@ -209,12 +214,12 @@ async function configureNetwork(session) {
             worker.stdout.on("data", (chunk) => {
                 buffer += chunk;
                 const first = buffer.indexOf("\n");
-                if (first >= 0 || buffer.length > 1024) {
+                if (first >= 0 || buffer.length > 8192) {
                     try { done(JSON.parse(buffer.slice(0, first))); } catch { done(null); }
                 }
             });
         });
-        if (!result || !/^http:\/\/127\.0\.0\.1:\d{1,5}\/[a-f0-9]{32}\.pac$/.test(result.pac)) {
+        if (!result || !Number.isInteger(result.port) || result.port < 1 || result.port > 65535) {
             worker.stdin.end();
             worker.kill();
             return;
@@ -225,10 +230,17 @@ async function configureNetwork(session) {
             networkStatus = "Обычный маршрут";
             void session.setProxy({mode: "system"}).catch(() => {});
         });
-        await session.setProxy({mode: "pac_script", pacScript: result.pac});
+        // Avoid Chromium's PAC resolver. The loopback relay binds Music
+        // sockets to Wi-Fi and uses the ordinary route for other HTTPS hosts.
+        const local = `127.0.0.1:${result.port}`;
+        await session.setProxy({mode: "fixed_servers", proxyRules: `http=direct://;https=${local},direct://`});
         const selected = await session.resolveProxy(samples[0]);
-        if (selected.startsWith("PROXY 127.0.0.1:")) networkStatus = `Прямой интерфейс · ${result.interface}`;
-        else worker.stdin.end();
+        if (selected.startsWith(`PROXY ${local}`)) {
+            networkStatus = `Прямой интерфейс · ${result.interface}`;
+        } else {
+            await session.setProxy({mode: "system"});
+            worker.stdin.end();
+        }
     } catch {
         relay?.stdin.end();
     }
@@ -243,8 +255,34 @@ app.on("before-quit", () => {
     discord.stop();
 });
 ipcMain.on("overtone:plugins", (event) => {
-    event.returnValue = trusted(event) ? {time: plugins.time, font: plugins.font,
-        replacements: plugins.replacements, metadata: plugins.metadata} : {};
+    event.returnValue = trusted(event) ? {time: plugins.time, font: plugins.font, fonts: plugins.fonts,
+        fckcensor: plugins.fckcensor} : {};
+});
+ipcMain.handle("overtone:font", async (event) => {
+    if (!trusted(event) || !plugins.fonts) return null;
+    let file;
+    try {
+        file = await fs.promises.open(fontFile, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        const info = await file.stat();
+        if (!info.isFile() || info.size <= 4 || info.size > 10 * 1024 * 1024) return null;
+        return await file.readFile();
+    } catch { return null; }
+    finally { await file?.close(); }
+});
+ipcMain.handle("overtone:track-labels", (event, ids) => {
+    if (!trusted(event) || !plugins.fckcensor || !Array.isArray(ids)) return {};
+    const entries = ids.slice(0, 500).filter((item) => typeof item === "string" && /^\d{1,24}$/.test(item));
+    return Object.fromEntries(entries.flatMap((item) => {
+        const patch = catalog.value.metadata[item];
+        return patch ? [[item, patch]] : [];
+    }));
+});
+ipcMain.handle("overtone:audio", async (event, id) => {
+    if (!trusted(event) || !plugins.fckcensor || typeof id !== "string" || !/^\d{1,24}$/.test(id)) return null;
+    if (!Object.keys(catalog.value.audio).length && catalogReady) {
+        await Promise.race([catalogReady, new Promise((resolve) => setTimeout(resolve, 1200).unref())]);
+    }
+    return catalog.media(id);
 });
 ipcMain.on("overtone:listening", (event, playing) => {
     if (trusted(event) && plugins.time) timer.set(playing === true);

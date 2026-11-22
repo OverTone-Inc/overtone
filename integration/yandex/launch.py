@@ -125,12 +125,12 @@ def prepare(archive, runtime_version):
     path = chunk("3265-")
     data = archive.read(path).decode()
     data = replace(data,
-        'let{entity:t,disableCache:a=!1,codecs:r,quality:i,transports:s}=e;if(this.variables.isMediaSourcePreloadEnabled)',
-        'let{entity:t,disableCache:a=!1,codecs:r,quality:i,transports:s}=e;'
-        'const original=t.data.meta.id,replacement=window.OvertoneRuntime?.replacement(original);'
-        'if(replacement&&String(original)!==replacement){'
-        'const read=(trackId)=>this.getFileInfoFromResource({trackId,quality:i,codecs:r,transports:s});'
-        'return read(replacement).then(result=>result?.downloadInfo?.urls?.length?result:read(original),()=>read(original));}'
+        'getFileInfo(e){let{entity:t,disableCache:a=!1,codecs:r,quality:i,transports:s}=e;if(this.variables.isMediaSourcePreloadEnabled)',
+        'async getFileInfo(e){let{entity:t,disableCache:a=!1,codecs:r,quality:i,transports:s}=e;'
+        'const original=t.data.meta.id,alternate=window.OvertoneRuntime?.audio(original);'
+        'if(alternate){const choice=await alternate;if(choice){'
+        'return {downloadInfo:{urls:[choice.url],codec:choice.codec,transport:aY.o.RAW,'
+        'trackId:original,bitrate:320,durationMs:choice.durationMs??t.data.meta.durationMs}}}}'
         'if(this.variables.isMediaSourcePreloadEnabled)')
     data = replace(data, 'handlePlayerEvents(e){let t,a;e.state.queueState.currentEntity.onChange',
         'handlePlayerEvents(e){window.OvertoneRuntime?.player(e,{playing:Y.MT.PLAYING,paused:Y.MT.PAUSED,'
@@ -198,6 +198,7 @@ def prepare(archive, runtime_version):
     edits["overtone-main.cjs"] = definitions.encode() + (PAYLOAD/"main.cjs").read_bytes()
     edits["overtone-discord.cjs"] = (PAYLOAD/"discord.cjs").read_bytes()
     edits["overtone-plugins.cjs"] = (PAYLOAD/"plugins.cjs").read_bytes()
+    edits["overtone-fckcensor.cjs"] = (PAYLOAD/"fckcensor.cjs").read_bytes()
     return edits
 
 
@@ -404,16 +405,21 @@ def launch(executable):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["status", "install", "restore", "launch",
-                                           "plugins", "plugins-save", "catalog", "update-check", "update-install"])
+                                           "plugins", "plugins-save", "font-import", "font-clear", "update-check", "update-install"])
     parser.add_argument("version")
     args = parser.parse_args()
     config = xdg("XDG_CONFIG_HOME", ".config") / "overtone"
     if args.action == "plugins":
         print(json.dumps({**plugin_config.configuration(config),
-                          "stats": plugin_config.summary(config)}, ensure_ascii=False))
+                          "stats": plugin_config.summary(config),
+                          "fontFile": plugin_config.font_label(config)}, ensure_ascii=False))
         return
-    if args.action == "catalog":
-        print(plugin_config.import_catalog(config))
+    if args.action == "font-import":
+        file = Path(json.loads(sys.stdin.read(8192)))
+        print(plugin_config.import_font(config, file))
+        return
+    if args.action == "font-clear":
+        plugin_config.clear_font(config)
         return
     if args.action == "plugins-save":
         result = plugin_config.save(config, json.loads(sys.stdin.read(256 * 1024)))

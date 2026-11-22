@@ -19,7 +19,7 @@ BINARIES = ("bin/overtone", "bin/overtone-ctl", "bin/overtone-background", "bin/
 VERSION_FILE = "share/overtone/yandex/release-version"
 PATHS = re.compile(r"(?:share/overtone/(?:yandex|vpn|adapter)/[a-zA-Z0-9._-]+|"
                    r"share/icons/hicolor/[0-9]+x[0-9]+/apps/io\.github\.devodrag\.Overtone\.png|"
-                   r"share/doc/overtone/(?:docs/)?[a-zA-Z0-9._-]+|share/licenses/overtone/LICENSE)")
+                   r"share/doc/overtone/(?:docs/)?[a-zA-Z0-9._-]+|share/licenses/overtone/(?:LICENSE|FckCensor-MIT\.txt))")
 
 
 def version(text):

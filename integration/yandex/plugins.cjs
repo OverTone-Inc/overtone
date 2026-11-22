@@ -17,16 +17,9 @@ function write(file, data) {
 
 function load(directory) {
     const settings = read(path.join(directory, "plugins.json"));
-    const number = /^[0-9]{1,24}$/;
-    const replacements = {};
-    if (settings.fckcensor) {
-        for (const [from, to] of Object.entries(settings.replacements ?? {}).slice(0, 5000)) {
-            if (number.test(from) && typeof to === "string" && number.test(to) && from !== to) replacements[from] = to;
-        }
-    }
     return {
-        replacements,
-        metadata: settings.fckcensor ? read(path.join(directory, "fckcensor-metadata.json")) : {},
+        fckcensor: settings.fckcensor === true,
+        fonts: settings.fonts === true,
         time: settings.time !== false,
         font: settings.fonts && typeof settings.font === "string" ? settings.font.slice(0, 100) : "",
         direct: settings.direct !== false,

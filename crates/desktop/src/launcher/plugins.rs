@@ -1,7 +1,6 @@
 use super::{label, run, run_with};
 use gtk::{glib, prelude::*};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,7 +11,8 @@ struct Settings {
     font: String,
     direct: bool,
     auto_update: bool,
-    replacements: BTreeMap<String, String>,
+    #[serde(default, skip_serializing)]
+    font_file: String,
     #[serde(default, skip_serializing)]
     stats: Stats,
 }
@@ -53,27 +53,6 @@ fn option(container: &gtk::Box, text: &str, caption: &str) -> gtk::Switch {
     row.append(&toggle);
     container.append(&row);
     toggle
-}
-
-fn pairs(text: &str) -> Result<BTreeMap<String, String>, String> {
-    let mut result = BTreeMap::new();
-    for (index, line) in text.lines().enumerate() {
-        let items = line.split_whitespace().collect::<Vec<_>>();
-        if items.is_empty() {
-            continue;
-        }
-        if items.len() != 2
-            || result
-                .insert(items[0].to_owned(), items[1].to_owned())
-                .is_some()
-        {
-            return Err(format!(
-                "Строка {} должна содержать одну уникальную пару ID.",
-                index + 1
-            ));
-        }
-    }
-    Ok(result)
 }
 
 #[derive(Clone)]
@@ -167,45 +146,11 @@ pub(super) fn page(updates: Updates) -> gtk::ScrolledWindow {
     let outer = gtk::Box::new(gtk::Orientation::Vertical, 12);
     outer.add_css_class("launcher-plugins");
 
-    let replacements = option(
+    let fckcensor = option(
         &outer,
         "FckCensor",
-        "Подмена аудио по ID треков Яндекс Музыки.",
+        "Автоматически загружает каталог и воспроизводит полную замену, если она есть.",
     );
-    let rules = gtk::TextView::new();
-    rules.set_monospace(true);
-    rules.set_tooltip_text(Some(
-        "Одна пара в строке. Сначала ID оригинала, затем ID замены.",
-    ));
-    let rules_scroll = gtk::ScrolledWindow::builder()
-        .min_content_height(64)
-        .max_content_height(105)
-        .propagate_natural_height(true)
-        .child(&rules)
-        .build();
-    outer.append(&rules_scroll);
-    outer.append(&note(
-        "Одна пара в строке. Сначала ID исходного трека, затем ID замены.",
-    ));
-    let catalog = gtk::Button::with_label("Загрузить каталог метаданных");
-    catalog.set_halign(gtk::Align::Start);
-    outer.append(&catalog);
-    let catalog_status = note("");
-    outer.append(&catalog_status);
-    catalog.connect_clicked(move |button| {
-        let (button, status) = (button.clone(), catalog_status.clone());
-        button.set_sensitive(false);
-        status.set_label("Загружаем каталог FckCensor…");
-        glib::MainContext::default().spawn_local(async move {
-            match run("catalog").await {
-                Ok(count) => status.set_label(&format!(
-                    "Загружено записей {count}. Каталог применяется при следующем запуске."
-                )),
-                Err(error) => status.set_label(&error),
-            }
-            button.set_sensitive(true);
-        });
-    });
 
     let time = option(
         &outer,
@@ -218,7 +163,7 @@ pub(super) fn page(updates: Updates) -> gtk::ScrolledWindow {
     let fonts = option(
         &outer,
         "Custom Fonts",
-        "Выбор установленного шрифта для интерфейса.",
+        "Системный шрифт или файл TTF, OTF, WOFF и WOFF2.",
     );
     let dialog = gtk::FontDialog::builder()
         .modal(true)
@@ -228,6 +173,60 @@ pub(super) fn page(updates: Updates) -> gtk::ScrolledWindow {
     font.set_level(gtk::FontLevel::Family);
     font.set_halign(gtk::Align::Start);
     outer.append(&font);
+    let file_controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let import = gtk::Button::with_label("Выбрать файл шрифта");
+    let clear = gtk::Button::with_label("Использовать системный");
+    file_controls.append(&import);
+    file_controls.append(&clear);
+    outer.append(&file_controls);
+    let font_status = note("Используется выбранное системное семейство.");
+    outer.append(&font_status);
+
+    let imported = font_status.clone();
+    import.connect_clicked(move |button| {
+        let parent = button.root().and_downcast::<gtk::Window>();
+        let status = imported.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let filter = gtk::FileFilter::new();
+            filter.set_name(Some("Файлы шрифтов"));
+            for ext in ["ttf", "otf", "woff", "woff2"] {
+                filter.add_suffix(ext);
+            }
+            let filters = gtk::gio::ListStore::new::<gtk::FileFilter>();
+            filters.append(&filter);
+            let dialog = gtk::FileDialog::builder()
+                .title("Выберите файл шрифта")
+                .filters(&filters)
+                .modal(true)
+                .build();
+            let Ok(file) = dialog.open_future(parent.as_ref()).await else {
+                return;
+            };
+            let Some(path) = file.path() else {
+                status.set_label("Выберите файл на этом компьютере.");
+                return;
+            };
+            let Ok(json) = serde_json::to_string(&path) else {
+                return;
+            };
+            match run_with("font-import", Some(json)).await {
+                Ok(name) => {
+                    status.set_label(&format!("Файл {name} применится при следующем запуске."))
+                }
+                Err(error) => status.set_label(&error),
+            }
+        });
+    });
+    let cleared = font_status.clone();
+    clear.connect_clicked(move |_| {
+        let status = cleared.clone();
+        glib::MainContext::default().spawn_local(async move {
+            match run("font-clear").await {
+                Ok(_) => status.set_label("При следующем запуске применится системное семейство."),
+                Err(error) => status.set_label(&error),
+            }
+        });
+    });
 
     let direct = option(
         &outer,
@@ -253,10 +252,10 @@ pub(super) fn page(updates: Updates) -> gtk::ScrolledWindow {
     outer.append(&controls);
 
     outer.set_sensitive(false);
-    let widgets = (replacements, rules, time, stats, fonts, font, direct, auto);
+    let widgets = (fckcensor, time, stats, fonts, font, direct, auto);
     {
         let outer = outer.clone();
-        let (replacements, rules, time, stats, fonts, font, direct, auto) = widgets.clone();
+        let (fckcensor, time, stats, fonts, font, direct, auto) = widgets.clone();
         let updates = updates.clone();
         let result = result.clone();
         glib::MainContext::default().spawn_local(async move {
@@ -265,14 +264,10 @@ pub(super) fn page(updates: Updates) -> gtk::ScrolledWindow {
             });
             match loaded {
                 Ok(config) => {
-                    replacements.set_active(config.fckcensor);
-                    let list = config
-                        .replacements
-                        .into_iter()
-                        .map(|(a, b)| format!("{a} {b}"))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    rules.buffer().set_text(&list);
+                    fckcensor.set_active(config.fckcensor);
+                    if !config.font_file.is_empty() {
+                        font_status.set_label(&format!("Загружен файл {}", config.font_file));
+                    }
                     time.set_active(config.time);
                     stats.set_label(&format!(
                         "Сегодня {}   ·   Неделя {}   ·   Всего {}",
@@ -297,7 +292,7 @@ pub(super) fn page(updates: Updates) -> gtk::ScrolledWindow {
     {
         let status = updates.status.clone();
         let version = updates.version.clone();
-        let auto = widgets.7.clone();
+        let auto = widgets.6.clone();
         updates.button.connect_clicked(move |button| {
             let control = Updates {
                 status: status.clone(),
@@ -312,22 +307,14 @@ pub(super) fn page(updates: Updates) -> gtk::ScrolledWindow {
         });
     }
     save.connect_clicked(move |save| {
-        let (replacements, rules, time, _, fonts, font, direct, auto) = &widgets;
-        let buffer = rules.buffer();
-        let map = match pairs(&buffer.text(&buffer.start_iter(), &buffer.end_iter(), false)) {
-            Ok(values) => values,
-            Err(error) => {
-                result.set_label(&error);
-                return;
-            }
-        };
+        let (fckcensor, time, _, fonts, font, direct, auto) = &widgets;
         let family = font
             .font_desc()
             .and_then(|description| description.family())
             .unwrap_or_else(|| "Sans".into());
         let config = Settings {
-            fckcensor: replacements.is_active(),
-            replacements: map,
+            fckcensor: fckcensor.is_active(),
+            font_file: String::new(),
             time: time.is_active(),
             fonts: fonts.is_active(),
             font: family.to_string(),

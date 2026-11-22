@@ -143,10 +143,11 @@ fn bind_connect(interface: &CString, address: SocketAddrV4) -> io::Result<TcpStr
     Ok(stream)
 }
 
-fn upstream(interface: &CString, host: &str) -> io::Result<TcpStream> {
+fn upstream(interface: Option<&CString>, host: &str) -> io::Result<TcpStream> {
     let addresses: Vec<_> = (host, 443).to_socket_addrs()?.take(8).collect();
     for address in &addresses {
-        if let SocketAddr::V4(v4) = address
+        if let Some(interface) = interface
+            && let SocketAddr::V4(v4) = address
             && public_v4(*v4.ip())
             && let Ok(stream) = bind_connect(interface, *v4)
         {
@@ -181,8 +182,6 @@ fn upstream(interface: &CString, host: &str) -> io::Result<TcpStream> {
 struct Relay {
     rules: Domains,
     interface: CString,
-    pac_path: String,
-    pac: String,
     active: AtomicUsize,
 }
 
@@ -207,24 +206,22 @@ impl Relay {
                 break;
             }
         }
-        if fields[0] == "GET" && fields[1] == self.pac_path {
-            write!(
-                client,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                self.pac.len(),
-                self.pac
-            )?;
-            return Ok(());
-        }
         let host = fields[1]
             .strip_suffix(":443")
             .unwrap_or_default()
             .trim_end_matches('.')
             .to_ascii_lowercase();
-        if fields[0] != "CONNECT" || !self.rules.matches(&host) {
+        if fields[0] != "CONNECT"
+            || host.is_empty()
+            || host.len() > 253
+            || !host
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
+        {
             return client.write_all(FORBIDDEN);
         }
-        let Ok(mut server) = upstream(&self.interface, &host) else {
+        let direct = self.rules.matches(&host).then_some(&self.interface);
+        let Ok(mut server) = upstream(direct, &host) else {
             return client.write_all(BAD_GATEWAY);
         };
         client.set_read_timeout(None)?;
@@ -254,28 +251,7 @@ fn main() -> io::Result<()> {
     let rules: Domains = serde_json::from_str(RULES)?;
     let listener = TcpListener::bind(("127.0.0.1", 0))?;
     let port = listener.local_addr()?.port();
-    let mut entropy = [0u8; 16];
-    std::fs::File::open("/dev/urandom")?.read_exact(&mut entropy)?;
-    let token = entropy
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let pac_path = format!("/{token}.pac");
-    let pac = format!(
-        r#"function FindProxyForURL(url, host) {{
-            host = host.toLowerCase();
-            var suffix = {};
-            var exact = {};
-            var proxy = 'PROXY 127.0.0.1:{port}; DIRECT';
-            for (var i=0;i<exact.length;i++) if (host === exact[i]) return proxy;
-            for (var j=0;j<suffix.length;j++) if (host === suffix[j] || dnsDomainIs(host,'.'+suffix[j])) return proxy;
-            return 'DIRECT';
-        }}"#,
-        serde_json::to_string(&rules.suffixes)?,
-        serde_json::to_string(&rules.hosts)?,
-    );
-    let report = serde_json::json!({"pac": format!("http://127.0.0.1:{port}{pac_path}"),
-        "interface": interface.to_string_lossy()});
+    let report = serde_json::json!({"port": port, "interface": interface.to_string_lossy()});
     println!("{report}");
     io::stdout().flush()?;
     thread::Builder::new().spawn(|| {
@@ -286,8 +262,6 @@ fn main() -> io::Result<()> {
     let relay = Arc::new(Relay {
         rules,
         interface,
-        pac_path,
-        pac,
         active: AtomicUsize::new(0),
     });
     for stream in listener.incoming().flatten() {

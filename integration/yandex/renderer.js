@@ -105,12 +105,13 @@ function removeOldLyrics() {
 }
 
 window.OvertoneRuntime = Object.freeze({
-    replacement: (id) => plugins.replacements?.[String(id)],
-    metadata(tracks) {
-        if (!Array.isArray(tracks) || !plugins.metadata) return tracks;
+    audio: (id) => plugins.fckcensor ? bridge.audio(String(id)).catch(() => null) : null,
+    async metadata(tracks) {
+        if (!Array.isArray(tracks) || !plugins.fckcensor) return tracks;
+        const patches = await bridge.trackLabels(tracks.map(({id}) => String(id))).catch(() => ({}));
         return tracks.map((track) => {
-            const alternative = Object.hasOwn(plugins.metadata, String(track?.id))
-                ? plugins.metadata[String(track.id)] : null;
+            const alternative = Object.hasOwn(patches, String(track?.id))
+                ? patches[String(track.id)] : null;
             if (!alternative) return track;
             return {...track, title: alternative.title ?? track.title,
                 version: alternative.version ?? track.version, coverUri: alternative.coverUri ?? track.coverUri};
@@ -282,9 +283,9 @@ const styles = `
 }
 :host([data-fallback]) { position: fixed; inset-inline-start: 16px; inset-block-end: 84px; z-index: 10; }
 .watermark {
-    position: fixed; inset-inline-end: 14px; inset-block-end: calc(var(--player-bar-height, 72px) + 9px);
-    z-index: 8; display: flex; gap: 6px; align-items: center; pointer-events: none; user-select: none;
-    padding: 4px 8px; border-radius: 10px; font-size: 10px; line-height: 1;
+    position: fixed; inset-inline-end: 0; inset-block-end: 0;
+    z-index: 100; display: flex; gap: 7px; align-items: center; pointer-events: none; user-select: none;
+    padding: 6px 10px; border-radius: 10px 0 0 0; font-size: 13px; line-height: 1.1;
     color: var(--muted); background: color-mix(in srgb, var(--surface) 90%, transparent);
 }
 .watermark b { color: var(--ink); font-weight: 650; }
@@ -407,15 +408,37 @@ footer {
 }
 `;
 
+function setFont(name) {
+    if (!name) return;
+    const custom = new CSSStyleSheet();
+    const family = CSS.escape(name);
+    custom.replaceSync(`body.ym-font-music {
+        --ym-font-family-text: ${family}, sans-serif !important;
+        --ym-font-text: ${family}, sans-serif !important;
+        --ym-font-heading: ${family}, sans-serif !important;
+        font-family: ${family}, sans-serif !important;
+    } body.ym-font-music :where(button, input, textarea, select) {
+        font-family: var(--ym-font-text) !important;
+    }`);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, custom];
+}
+
+async function customFont() {
+    try {
+        const data = await bridge.fontFile();
+        if (data) {
+            const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+            const face = await new FontFace("OvertoneCustom", bytes).load();
+            document.fonts.add(face);
+            setFont("OvertoneCustom");
+            return;
+        }
+    } catch {}
+    setFont(plugins.font);
+}
+
 function mount() {
-    if (plugins.font) {
-        const custom = new CSSStyleSheet();
-        const family = CSS.escape(plugins.font);
-        custom.replaceSync(`body.ym-font-music, body.ym-font-music * {
-            --ym-font-family-text: ${family}, sans-serif !important;
-        } body.ym-font-music {font-family: ${family}, sans-serif !important;}`);
-        document.adoptedStyleSheets = [...document.adoptedStyleSheets, custom];
-    }
+    if (plugins.fonts) void customFont();
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(styles);
     const attach = (id, html) => {
