@@ -4,7 +4,7 @@ members = ["crates/core", "crates/player", "crates/service", "crates/desktop"]
 default-members = ["crates/service", "crates/desktop"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 
 [workspace.dependencies]

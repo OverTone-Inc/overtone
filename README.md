@@ -1,6 +1,6 @@
 # Overtone
 
-Overtone 0.3.0 добавляет Discord Rich Presence и тексты из LRCLIB в настольную Яндекс Музыку для Linux. В комплекте также есть нативный менеджер MPRIS и адаптер локальной замены аудио в mpv.
+Overtone 0.3.1 добавляет Discord Rich Presence и тексты из LRCLIB в настольную Яндекс Музыку для Linux. В комплекте также есть нативный менеджер MPRIS и адаптер локальной замены аудио в mpv.
 
 ## Мод Яндекс Музыки
 
@@ -13,7 +13,7 @@ Overtone устанавливает мод в `resources/app.asar` устано�
 
 Метод работы со своим архивом основан на подходе [PulseSync Mod](https://github.com/PulseSync-LLC/PulseSync-mod). Настройки Discord ориентированы на [схему PulseSync](https://github.com/PulseSync-LLC/PulseSync-mod/blob/main/webModules/pulsesyncSettings/src/schema/sections/integrations.ts).
 
-В сборке 0.1.0 автоматическая замена подтверждена **для локальных записей в mpv 0.41.0**. Установленный клиент Яндекс Музыки 5.109.1 зарегистрировал MPRIS, но в проверенном сеансе не дошёл до воспроизведения. Замена аудио в Яндекс Музыке остаётся незавершённой.
+Замена аудио через менеджер MPRIS подтверждена для локальных записей в mpv 0.41.0. Встроенный FckCensor применяет свои пары ID внутри Яндекс Музыки.
 
 ## Быстрый запуск на Arch
 
@@ -58,13 +58,13 @@ python3 packaging/install.py --user --bin-dir target/release
 ```bash
 mkdir -p release
 PKGDEST="$PWD/release" CARGO_BUILD_JOBS=1 makepkg --clean
-sudo pacman -U ./release/overtone-0.3.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./release/overtone-0.3.1-1-x86_64.pkg.tar.zst
 
 python3 site/build.py
 python3 -m http.server 8000 --bind 127.0.0.1 --directory dist
 ```
 
-Откройте [локальный сайт](http://127.0.0.1:8000/). Для размещения на обычном веб-сервере достаточно содержимого `dist`. Генератор подставляет из локального пакета имя, размер, версию и SHA‑256. Название, ID приложения и адреса проекта редактируются в `data/project.json`. Адреса сайта, репозитория и обратной связи пока пусты.
+Откройте [локальный сайт](http://127.0.0.1:8000/). Для размещения на обычном веб-сервере достаточно содержимого `dist`. Генератор подставляет из локального пакета имя, размер, версию и SHA‑256. Название, ID приложения и адреса проекта редактируются в `data/project.json`. Публичные релизы и обратная связь доступны в репозитории.
 
 ```bash
 overtone --quit

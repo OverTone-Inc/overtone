@@ -115,4 +115,24 @@ button.launcher-check {
 .launcher-plugins { padding: 12px 15px 12px; }
 .launcher-plugin-title { font-size: 15px; font-weight: 750; color: #2d211d; }
 .launcher-plugin-note { font-size: 12px; color: #604d47; }
-.launcher-plugins textview { padding: 6px; border-radius: 8px; }
+.launcher-plugins textview {
+  padding: 8px;
+  border: 1px solid #dcc6be;
+  border-radius: 8px;
+  color: #2d211d;
+  background: #fffaf8;
+}
+.launcher-plugins textview text { color: #2d211d; background: #fffaf8; }
+.launcher-plugins button {
+  color: #492820;
+  background: #fff7f3;
+  border: 1px solid #d9bdb3;
+  border-radius: 8px;
+}
+.launcher-plugins button:hover { background: #f3ded7; }
+.launcher-plugins button.suggested-action {
+  color: #fff;
+  background: #b73423;
+  border-color: #a02c1d;
+}
+.launcher-plugins button:disabled { color: #705950; background: #e9ddd8; }

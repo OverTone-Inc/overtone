@@ -131,7 +131,7 @@ sudo pacman -R overtone</pre><p>Настройки и правила остаю�
 PKGDEST="$PWD/release" CARGO_BUILD_JOBS=1 makepkg --clean</pre>
     <p>Для сборки нужны Rust, GTK4, pkgconf и Python 3. Для сборки пакета нужны инструменты Arch Linux.</p>"""
     page("download","Загрузки","Пакет Arch x86_64, SHA‑256 и команды установки.",
-        intro("Загрузки","Предварительная сборка для Arch Linux x86_64. Публичный релиз ещё не опубликован.")
+        intro("Загрузки","Сборки Overtone для Arch Linux x86_64 доступны в GitHub Releases.")
         +band(f'<div class="prose">{parts}{build}</div>'))
 def help_page():
     cols = ["client","version","control","replacement","queue","date"]
