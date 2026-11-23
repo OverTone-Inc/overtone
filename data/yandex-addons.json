@@ -1,0 +1,42 @@
+[
+  {
+    "id": "fckcensor",
+    "name": "FckCensor",
+    "author": "Haz",
+    "category": "Воспроизведение",
+    "description": "Находит полные версии треков в каталоге FckCensor.",
+    "url": "https://github.com/Hazzz895/FckCensor",
+    "icon": "media-playback-start-symbolic",
+    "external": false
+  },
+  {
+    "id": "time",
+    "name": "YandexMusicTime",
+    "author": "dobryjigrok и dieugh",
+    "category": "Статистика",
+    "description": "Время прослушивания, дневная статистика и серия входов.",
+    "url": "https://github.com/mak7im01/YandexMusicTime",
+    "icon": "document-open-recent-symbolic",
+    "external": true
+  },
+  {
+    "id": "spicy",
+    "name": "SP Lyrics",
+    "author": "savme / saveksme",
+    "category": "Тексты",
+    "description": "Пословное караоке, анимированный фон Kawarp и компактный NowBar.",
+    "url": "https://github.com/saveksme/pulsesync-spicy-lyrics",
+    "icon": "insert-text-symbolic",
+    "external": true
+  },
+  {
+    "id": "fonts",
+    "name": "Custom Fonts",
+    "author": "Overtone",
+    "category": "Оформление",
+    "description": "Системное семейство или шрифт из файла.",
+    "url": "",
+    "icon": "preferences-desktop-font-symbolic",
+    "external": false
+  }
+]

@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 
+import addons
 import plugin_config
 import update
 
@@ -186,6 +187,7 @@ def prepare(archive, runtime_version):
         + b'\nbridge.executeInMainWorld({func: function () {\n'
         + f'const overtoneVersion = {json.dumps(runtime_version)};\n'.encode()
         + (PAYLOAD/"renderer.js").read_bytes()
+        + (PAYLOAD/"addon-host.js").read_bytes()
         + b'\n}});\n})();\n')
     discord_id = json.loads((PAYLOAD/"discord-application.json").read_text())["applicationId"]
     if discord_id is not None and (not isinstance(discord_id, str) or not re.fullmatch(r"[0-9]{16,22}", discord_id)):
@@ -405,14 +407,28 @@ def launch(executable):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["status", "install", "restore", "launch",
-                                           "plugins", "plugins-save", "font-import", "font-clear", "update-check", "update-install"])
+                                           "plugins", "plugins-save", "font-import", "font-clear", "addon-install", "mod-settings-save",
+                                           "rust-status", "rust-install", "rust-launch", "rust-remove",
+                                           "update-check", "update-install"])
     parser.add_argument("version")
     args = parser.parse_args()
     config = xdg("XDG_CONFIG_HOME", ".config") / "overtone"
     if args.action == "plugins":
         print(json.dumps({**plugin_config.configuration(config),
                           "stats": plugin_config.summary(config),
-                          "fontFile": plugin_config.font_label(config)}, ensure_ascii=False))
+                          "fontFile": plugin_config.font_label(config), "addons": addons.versions(config), "mod": plugin_config.mod_settings(config)}, ensure_ascii=False))
+        return
+    if args.action == "mod-settings-save":
+        plugin_config.save_mod(config, json.loads(sys.stdin.read(8192)))
+        return
+    if args.action == "addon-install":
+        name = json.loads(sys.stdin.read(100))
+        print(addons.install(config, name))
+        plugin_config.save(config, {name: True})
+        return
+    if args.action.startswith("rust-"):
+        import rust_client
+        rust_client.run(args.action[5:])
         return
     if args.action == "font-import":
         file = Path(json.loads(sys.stdin.read(8192)))
@@ -461,7 +477,7 @@ if __name__ == "__main__":
     except PermissionError as error:
         print(f"Нет прав на запись в каталог Яндекс Музыки. {error.filename}", file=sys.stderr)
         sys.exit(1)
-    except (OSError, Incompatible) as error:
+    except (OSError, Incompatible, subprocess.SubprocessError) as error:
         print(error, file=sys.stderr)
         sys.exit(1)
     except ValueError as error:

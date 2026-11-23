@@ -12,7 +12,7 @@ import tempfile
 import urllib.error
 import urllib.request
 
-REPO = "devodrag/overtone"
+REPO = "OverTone-Inc/overtone"
 LIMIT = 40 * 1024 * 1024
 API = f"https://api.github.com/repos/{REPO}/releases/latest"
 BINARIES = ("bin/overtone", "bin/overtone-ctl", "bin/overtone-background", "bin/overtone-route")

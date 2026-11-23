@@ -998,7 +998,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-core"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -1008,7 +1008,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-desktop"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -1026,7 +1026,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-player"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -1038,7 +1038,7 @@ dependencies = [
 
 [[package]]
 name = "overtone-service"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "libc",

@@ -1,10 +1,11 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const {EventEmitter} = require("node:events");
 const {mkdtempSync, readFileSync, rmSync} = require("node:fs");
 const {tmpdir} = require("node:os");
 const {join} = require("node:path");
-const {normalizeCover, activity} = require("../integration/yandex/discord.cjs");
+const {Discord, activity, coverCandidates, frame, normalizeCover} = require("../integration/yandex/discord.cjs");
 const {ListeningTime} = require("../integration/yandex/plugins.cjs");
 const {Catalog, detectCodec} = require("../integration/yandex/fckcensor.cjs");
 
@@ -18,6 +19,50 @@ assert.equal(normalizeCover("https://notyandex.net/music"), "");
 assert.equal(normalizeCover("https://yandex.net.attacker.invalid/music"), "");
 assert.equal(normalizeCover("blob:https://music.yandex.ru/1234"), "");
 assert.equal(activity({title:"Track", artist:"Artist", status:"paused"}, {}).assets.large_image, "logo");
+
+function verifyArtworkChanges() {
+    const first = coverCandidates(["//avatars.yandex.net/get-music-content/42/first/%%"]);
+    const second = coverCandidates(["https://avatars.mds.yandex.net/get-music-content/42/second/%25%25"]);
+    assert.deepEqual(first, [
+        "https://avatars.mds.yandex.net/get-music-content/42/first/400x400",
+        "https://avatars.yandex.net/get-music-content/42/first/400x400",
+    ]);
+
+    const socket = new EventEmitter();
+    const writes = [];
+    socket.write = (bytes) => writes.push(JSON.parse(bytes.subarray(8)));
+    socket.end = socket.write;
+    const discord = new Discord();
+    discord.settings = {enabled: true, applicationId: "1"};
+    discord.attach(socket, discord.generation);
+    socket.emit("data", frame(1, {evt: "READY"}));
+
+    const sendTrack = (covers) => {
+        discord.sentAt = 0;
+        discord.track({id: "42", title: "Test Track", status: "playing", covers});
+        return writes.at(-1);
+    };
+    const reply = (sent, data, evt) => {
+        discord.sentAt = 0;
+        socket.emit("data", frame(1, {cmd: "SET_ACTIVITY", nonce: sent.nonce, data, evt}));
+    };
+    const image = (sent = writes.at(-1)) => sent.args.activity.assets.large_image;
+
+    const previous = sendTrack(first);
+    assert.equal(image(), first[0]);
+    reply(previous, {details: "Test Track", assets: {large_image: "mp:external/old"}});
+    const current = sendTrack(second);
+    assert.equal(image(), second[0]);
+    reply(previous, {details: "Test Track", assets: {}});
+    assert.equal(writes.at(-1), current);
+    reply(current, {details: "Test Track", assets: {large_image: "mp:external/old"}});
+    assert.equal(image(), second[1]);
+    reply(writes.at(-1), {message: "image unavailable"}, "ERROR");
+    assert.equal(image(), "logo");
+    discord.stop();
+}
+
+verifyArtworkChanges();
 
 (async () => {
     const folder = mkdtempSync(join(tmpdir(), "overtone-time-test-"));

@@ -27,7 +27,7 @@ function describe(track) {
         album: track.albums?.[0]?.title ?? "",
         version: track.version ?? "",
         duration: (track.durationMs ?? 0) / 1000,
-        covers: [track.coverUri, track.imageUrl, track.albums?.[0]?.coverUri,
+        covers: [track.coverUri, track.imageUrl, track.albums?.[0]?.coverUri, track.albums?.[0]?.cover?.uri,
             track.albums?.[0]?.imageUrl].filter((cover) => typeof cover === "string" && cover),
     };
 }
@@ -53,7 +53,9 @@ function localTrack() {
     if (!status) return null;
     const info = remember(track);
     const media = navigator.mediaSession?.metadata;
-    const covers = media?.title === track.title ? [...info.covers, ...media.artwork.map(({src}) => src)] : info.covers;
+    const matches = media?.title === info.title && media.artist === info.artist
+        && (!media.album || !info.album || media.album === info.album);
+    const covers = matches ? [...info.covers, ...media.artwork.map(({src}) => src)] : info.covers;
     return {...info, covers, status, duration: progress?.duration || info.duration,
         position: progress?.position || 0, speed: state.playerState.speed?.value || 1, observedAt: Date.now()};
 }
@@ -83,7 +85,7 @@ async function publish(force = false) {
     if (!settings.enabled && !plugins.time) return;
     const local = localTrack();
     const playing = Boolean(local && playback.state.playerState.status.value === playerTypes.playing);
-    if (plugins.time && playing !== listening) {
+    if (plugins.time && !addonHost.has("time") && playing !== listening) {
         listening = playing;
         bridge.listening(playing);
     }
@@ -120,6 +122,7 @@ window.OvertoneRuntime = Object.freeze({
     navigation(element) {
         navSlot = element;
         if (settingsControl) insertControl();
+        addonHost.move();
     },
     externalLyrics: () => settings.lyricsMode !== "yandex",
     async lyrics(request, original, getTrack) {
@@ -163,14 +166,16 @@ window.OvertoneRuntime = Object.freeze({
         if (playback === player) return;
         playback = player;
         playerTypes = states;
-        player.state.queueState.currentEntity.onChange(() => void publish());
-        player.state.playerState.status.onChange(() => void publish());
+        const update = () => { addonHost.update(); void publish(); };
+        player.state.queueState.currentEntity.onChange(update);
+        player.state.playerState.status.onChange(update);
         player.state.playerState.event.onChange(() => {
+            addonHost.update();
             if (player.state.playerState.event.value === states.seek) queueMicrotask(() => void publish(true));
             else void publish();
         });
-        player.state.playerState.speed?.onChange(() => void publish());
-        void publish();
+        player.state.playerState.speed?.onChange(update);
+        update();
     },
     ynison(snapshot) {
         remoteState = snapshot;
@@ -441,6 +446,16 @@ function mount() {
     if (plugins.fonts) void customFont();
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(styles);
+    const pluginControls = new CSSStyleSheet();
+    pluginControls.replaceSync(`.overtone-addon-link {
+        display: block; margin: 3px 8px; padding: 8px 12px;
+        color: var(--ym-controls-color-secondary-on_outline-enabled, #d7d7d7);
+        background: transparent; border: 0; border-radius: 8px;
+        font: inherit; font-size: 13px; cursor: pointer;
+    }
+    .overtone-addon-link:hover { background: var(--ym-controls-color-secondary-default-hovered, #fff2); }
+    .overtone-addon-link:focus-visible { outline: 2px solid #ffd633; }`);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, pluginControls];
     const attach = (id, html) => {
         const host = document.createElement("div");
         host.id = id;
@@ -600,6 +615,11 @@ function mount() {
     document.body.append(host);
     insertControl();
     bridge.ready();
+    queueMicrotask(() => {
+        for (const name of ["time", "spicy"]) {
+            if (plugins[name]) void bridge.loadAddon(name).catch(() => {});
+        }
+    });
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount, {once: true});

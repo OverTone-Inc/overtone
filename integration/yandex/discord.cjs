@@ -7,6 +7,7 @@ const { join } = require("node:path");
 
 const MAX_FRAME = 1024 * 1024;
 const UPDATE_INTERVAL = 5000;
+const ACK_TIMEOUT = 8000;
 
 function frame(opcode, data) {
     const body = Buffer.isBuffer(data) ? data : Buffer.from(JSON.stringify(data));
@@ -58,13 +59,38 @@ function normalizeCover(value) {
     } catch { return ""; }
 }
 
-function activity(track, settings) {
+function coverCandidates(values) {
+    const result = new Set();
+    for (const value of values) {
+        const cover = normalizeCover(value);
+        if (!cover) continue;
+        const url = new URL(cover);
+        if (["avatars.yandex.net", "avatars.mds.yandex.net"].includes(url.hostname)
+            && /^\/get-music(?:-|\/)/.test(url.pathname)) {
+            url.hostname = "avatars.mds.yandex.net";
+            result.add(url.href);
+            url.hostname = "avatars.yandex.net";
+            result.add(url.href);
+        } else result.add(cover);
+    }
+    return [...result].slice(0, 6);
+}
+
+function rejectedCover(response, requested, previous) {
+    if (requested === "logo" || typeof response.data?.details !== "string") return false;
+    const assets = response.data.assets;
+    const cover = assets?.large_image;
+    return !cover || cover === "logo" || cover === assets?.small_image
+        || (previous?.requested !== requested && previous?.resolved === cover);
+}
+
+function activity(track, settings, cover = track.cover || "logo") {
     const russian = settings.locale === "ru";
     const suffix = settings.showVersion && track.version ? ` (${track.version})` : "";
     const url = track.id ? (track.albumId
         ? `https://music.yandex.ru/album/${track.albumId}/track/${track.id}`
         : `https://music.yandex.ru/track/${track.id}`) : "";
-    const assets = {large_image: track.cover || "logo"};
+    const assets = {large_image: cover};
     if (settings.showAlbum && track.album) assets.large_text = limit(track.album);
     else if (!settings.hideBranding) assets.large_text = "Overtone";
     if (settings.showSmallIcon) {
@@ -125,6 +151,11 @@ class Discord {
         const wasPaused = this.current?.status === "paused" && track?.status === "paused"
             && this.current.id === track.id && this.current.title === track.title;
         this.current = track;
+        const key = track && JSON.stringify([track.id, track.albumId, track.covers, track.cover]);
+        if (key !== this.coverKey) {
+            this.coverKey = key;
+            this.coverIndex = 0;
+        }
         this.pausedAt = track?.status === "paused" ? (wasPaused ? this.pausedAt : Date.now()) : undefined;
         this.update();
     }
@@ -134,10 +165,12 @@ class Discord {
         clearTimeout(this.retry);
         clearTimeout(this.afk);
         clearTimeout(this.flush);
-        this.retry = this.afk = this.flush = undefined;
+        clearTimeout(this.ack);
+        this.retry = this.afk = this.flush = this.ack = undefined;
         const socket = this.socket;
         this.socket = undefined;
         this.last = undefined;
+        this.lastCover = this.sent = undefined;
         this.sentAt = undefined;
         const wasReady = this.ready;
         this.ready = false;
@@ -189,6 +222,9 @@ class Discord {
             this.socket = undefined;
             this.ready = false;
             this.last = undefined;
+            this.lastCover = this.sent = undefined;
+            clearTimeout(this.ack);
+            this.ack = undefined;
             this.sentAt = undefined;
             this.status = failure;
             this.schedule(generation);
@@ -214,17 +250,36 @@ class Discord {
                     this.status = "Discord подключён";
                     this.update();
                 }
-                if (response.evt === "ERROR") {
-                    this.status = "Discord отклонил обновление статуса";
+                if (response.cmd === "SET_ACTIVITY" && this.sent && response.nonce === this.sent.nonce) {
+                    this.handleActivity(response);
                 }
-                if (response.cmd === "SET_ACTIVITY" && !response.evt) this.status = "Discord подключён";
             }
         });
         socket.write(frame(0, {v: 1, client_id: this.settings.applicationId}));
     }
 
-    command(value) {
-        return frame(1, {cmd: "SET_ACTIVITY", nonce: randomUUID(),
+    handleActivity(response) {
+        const {key, image} = this.sent;
+        this.sent = undefined;
+        clearTimeout(this.ack);
+        this.ack = undefined;
+        const error = response.evt === "ERROR";
+        const rateLimited = error && /rate.limit|too many/i.test(response.data?.message || "");
+        this.status = error ? "Discord отклонил обновление статуса" : "Discord подключён";
+        if (key === this.coverKey && image !== "logo" && !rateLimited
+            && (error || rejectedCover(response, image, this.lastCover))) {
+            this.coverIndex++;
+            this.update();
+        } else if (key === this.coverKey && rateLimited) {
+            this.last = undefined;
+            this.update();
+        } else if (!error && image !== "logo" && response.data?.assets?.large_image) {
+            this.lastCover = {requested: image, resolved: response.data.assets.large_image};
+        }
+    }
+
+    command(value, nonce = randomUUID()) {
+        return frame(1, {cmd: "SET_ACTIVITY", nonce,
             args: {pid: process.pid, activity: value}});
     }
 
@@ -240,7 +295,9 @@ class Discord {
             this.afk.unref();
         }
         if (!this.ready) return;
-        const next = track && remaining > 0 ? activity(track, this.settings) : null;
+        const covers = track?.covers ?? (track?.cover ? [track.cover] : []);
+        const image = covers[this.coverIndex ?? 0] || "logo";
+        const next = track && remaining > 0 ? activity(track, this.settings, image) : null;
         const key = JSON.stringify(next);
         if (key === this.last) return;
         const delay = this.sentAt ? UPDATE_INTERVAL - (Date.now() - this.sentAt) : 0;
@@ -251,10 +308,14 @@ class Discord {
             }
             return;
         }
-        this.socket.write(this.command(next));
+        const nonce = randomUUID();
+        clearTimeout(this.ack);
+        this.sent = {nonce, key: this.coverKey, image: next ? image : "logo"};
+        this.ack = setTimeout(() => this.handleActivity({evt: "ERROR"}), ACK_TIMEOUT).unref();
+        this.socket.write(this.command(next, nonce));
         this.last = key;
         this.sentAt = Date.now();
     }
 }
 
-module.exports = {Discord, activity, frame, normalizeCover};
+module.exports = {Discord, activity, coverCandidates, frame, normalizeCover, rejectedCover};

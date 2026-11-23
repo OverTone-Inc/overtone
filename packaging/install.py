@@ -14,7 +14,7 @@ def entry(command="overtone"):
     return f"""[Desktop Entry]
 Type=Application
 Name={NAME}
-Comment=Яндекс Музыка с Discord RPC и LRCLIB
+Comment=Клиенты Яндекс Музыки, плагины и статистика прослушивания
 Exec={command} --launcher
 Icon={APP_ID}
 Terminal=false
@@ -25,7 +25,7 @@ Actions=Manager;Mini;
 
 [Desktop Action Manager]
 Name=Менеджер плееров
-Exec={command}
+Exec={command} --manager
 
 [Desktop Action Mini]
 Name=Мини-плеер
@@ -57,8 +57,11 @@ def install(base, binary, command="overtone"):
     ])
     mod = ROOT/"integration/yandex"
     for name in ("launch.py", "main.cjs", "discord.cjs", "preload.js", "renderer.js", "discord-application.json",
-                 "plugins.cjs", "fckcensor.cjs", "plugin_config.py", "update.py"):
+                 "plugins.cjs", "fckcensor.cjs", "plugin_config.py", "update.py", "addons.py",
+                 "addon-host.js", "rust_client.py"):
         items.append((mod/name, base/"share/overtone/yandex"/name))
+    if (mod / "rust-release.json").is_file():
+        items.append((mod / "rust-release.json", base / "share/overtone/yandex/rust-release.json"))
     items.append((mod/"licenses/FckCensor-MIT.txt", base/"share/licenses/overtone/FckCensor-MIT.txt"))
     for name in ("yandex_music.py", "music-domains.json"):
         items.append((ROOT/"integration/vpn"/name, base/"share/overtone/vpn"/name))

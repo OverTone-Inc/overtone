@@ -21,6 +21,7 @@ function load(directory) {
         fckcensor: settings.fckcensor === true,
         fonts: settings.fonts === true,
         time: settings.time !== false,
+        spicy: settings.spicy === true,
         font: settings.fonts && typeof settings.font === "string" ? settings.font.slice(0, 100) : "",
         direct: settings.direct !== false,
     };
@@ -73,4 +74,4 @@ class ListeningTime {
     }
 }
 
-module.exports = {load, ListeningTime};
+module.exports = {load, ListeningTime, write};

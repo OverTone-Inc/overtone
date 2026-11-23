@@ -3,13 +3,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { homedir } = require("node:os");
 const { spawn } = require("node:child_process");
-const { Discord, normalizeCover } = require("./overtone-discord.cjs");
+const { Discord, coverCandidates } = require("./overtone-discord.cjs");
 
 const configHome = path.isAbsolute(process.env.XDG_CONFIG_HOME || "")
     ? process.env.XDG_CONFIG_HOME : path.join(homedir(), ".config");
 const directory = path.join(configHome, "overtone");
 const config = path.join(directory, "yandex-mod.json");
-const {load: loadPlugins, ListeningTime} = require("./overtone-plugins.cjs");
+const {load: loadPlugins, ListeningTime, write} = require("./overtone-plugins.cjs");
 const {Catalog} = require("./overtone-fckcensor.cjs");
 const plugins = loadPlugins(directory);
 const timer = new ListeningTime(path.join(directory, "listening-time.json"));
@@ -180,8 +180,8 @@ function presence(value) {
     if (!info && !text(value.title)) return null;
     return {...info, title: text(value.title), artist: text(value.artist), album: text(value.album),
         version: text(value.version), id: id(value.id), albumId: id(value.albumId),
-        status: value.status, cover: (Array.isArray(value.covers) ? value.covers.slice(0, 8) : [value.cover])
-            .map(normalizeCover).find(Boolean) || "", position: number(value.position, 86400),
+        status: value.status, covers: coverCandidates(Array.isArray(value.covers) ? value.covers.slice(0, 8) : [value.cover]),
+        position: number(value.position, 86400),
         duration: number(value.duration, 86400), speed: number(value.speed, 5),
         observedAt: Math.abs(value.observedAt - Date.now()) < 86400_000 ? value.observedAt : Date.now()};
 }
@@ -256,7 +256,55 @@ app.on("before-quit", () => {
 });
 ipcMain.on("overtone:plugins", (event) => {
     event.returnValue = trusted(event) ? {time: plugins.time, font: plugins.font, fonts: plugins.fonts,
-        fckcensor: plugins.fckcensor} : {};
+        fckcensor: plugins.fckcensor, spicy: plugins.spicy} : {};
+});
+ipcMain.handle("overtone:addon", async (event, name) => {
+    if (!trusted(event) || !["time", "spicy"].includes(name) || !plugins[name]) return false;
+    const root = path.join(directory, "addons", name);
+    try {
+        const read = async (file) => {
+            const target = path.join(root, file);
+            if ((await fs.promises.stat(target)).size > 512_000) throw new Error("Addon asset too large");
+            return fs.promises.readFile(target, "utf8");
+        };
+        const [source, css, react] = await Promise.all(["script.js", "script.css", "react.js"].map(read));
+        const frame = event.senderFrame;
+        if (!trusted(event)) return false;
+        await event.sender.insertCSS(css);
+        const code = `(async () => {
+            const host = window.OvertoneAddonRuntime;
+            const library = (() => {const exports = {};
+${react}
+return exports;})();
+            const previous = window.__PULSESYNC_WEB_HOST__;
+            let addon;
+            window.__PULSESYNC_WEB_HOST__ = {apiVersion: 1, capabilities: host.caps, React: library};
+            try {
+                addon = (() => {
+${source}
+return PulseSyncAddon;})();
+            } finally {
+                if (previous) window.__PULSESYNC_WEB_HOST__ = previous;
+                else delete window.__PULSESYNC_WEB_HOST__;
+            }
+            await host.install(${JSON.stringify(name)}, addon, library);
+            return true;
+        })()`;
+        return await frame.executeJavaScript(code);
+    } catch (error) {
+        if (error.code !== "ENOENT") console.warn("[Overtone] Ошибка загрузки аддона", name, String(error));
+        return false;
+    }
+});
+ipcMain.on("overtone:addon-stats", (event, days, streak) => {
+    if (!trusted(event) || !plugins.time || !days || typeof days !== "object") return;
+    const clean = Object.fromEntries(Object.entries(days).slice(0, 15_000).filter(([key, value]) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(key) && Number.isFinite(value) && value >= 0 && value <= 86_400));
+    const count = (number) => Number.isInteger(number) ? Math.min(40_000, Math.max(0, number)) : 0;
+    const series = /^\d{4}-\d{2}-\d{2}$/.test(streak?.lastDate) ?
+        {count: count(streak.count), best: count(streak.best), lastDate: streak.lastDate} : null;
+    try { write(path.join(directory, "time-addon.json"), {days: clean, streak: series}); }
+    catch (error) { console.warn("[Overtone] Не удалось сохранить статистику аддона", error.code); }
 });
 ipcMain.handle("overtone:font", async (event) => {
     if (!trusted(event) || !plugins.fonts) return null;

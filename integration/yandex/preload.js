@@ -8,6 +8,8 @@ bridge.exposeInMainWorld("OvertoneBridge", {
     fontFile: () => ipc.invoke("overtone:font"),
     trackLabels: (ids) => ipc.invoke("overtone:track-labels", ids),
     audio: (id) => ipc.invoke("overtone:audio", id),
+    loadAddon: (name) => ipc.invoke("overtone:addon", name),
+    addonStats: (days, streak) => ipc.send("overtone:addon-stats", days, streak),
     listening: (playing) => ipc.send("overtone:listening", playing),
     save: (settings) => ipc.invoke("overtone:save", settings),
     lyrics: (track, format) => ipc.invoke("overtone:lyrics", track, format),

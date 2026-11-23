@@ -1,0 +1,193 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import { ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { App } from "state.slint";
+import { Theme } from "theme.slint";
+import { Fade, PillButton } from "widgets.slint";
+
+component Label inherits Text {
+    color: Theme.controls-color-primary-text-enabled;
+    font-size: 15px;
+    wrap: word-wrap;
+    vertical-stretch: 0;
+}
+
+component Hint inherits Label {
+    color: Theme.controls-color-secondary-on-outline-enabled;
+    font-size: 13px;
+}
+
+component OptionRow inherits Rectangle {
+    in property <string> name;
+    in property <string> description;
+    in property <string> key;
+    in property <bool> enabled-option;
+    in property <string> author;
+    min-height: max(74px, content.preferred-height + 22px);
+    border-radius: 12px;
+    border-width: keyboard.has-focus ? 1px : 0px;
+    border-color: Theme.controls-color-accent-default-enabled;
+    background: hit.has-hover ? Theme.controls-color-secondary-default-hovered : Theme.background-color-primary-enabled-basic;
+    animate background { duration: App.motion ? 140ms : 0ms; }
+    accessible-role: switch;
+    accessible-label: root.name;
+    accessible-checkable: true;
+    accessible-checked: root.enabled-option;
+    accessible-action-default => { root.toggle(); }
+    forward-focus: keyboard;
+
+    function toggle() {
+        App.overtone-change(root.key, root.enabled-option ? "false" : "true");
+    }
+
+    content := VerticalLayout {
+        x: 14px;
+        width: parent.width - 82px;
+        height: parent.height - 22px;
+        alignment: center;
+        spacing: 4px;
+        Label { text: root.name; font-weight: 700; }
+        if root.author != "": Hint { text: root.author; }
+        Hint { text: root.description; }
+    }
+    Rectangle {
+        x: parent.width - self.width - 16px;
+        width: 42px;
+        height: 24px;
+        border-radius: 12px;
+        background: root.enabled-option ? Theme.controls-color-accent-default-enabled : Theme.controls-color-secondary-default-pressed;
+        animate background { duration: App.motion ? 150ms : 0ms; }
+        Rectangle {
+            x: root.enabled-option ? parent.width - self.width - 3px : 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            background: root.enabled-option ? #ffffff : Theme.controls-color-secondary-on-outline-enabled;
+            animate x { duration: App.motion ? 150ms : 0ms; }
+        }
+    }
+    hit := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.toggle(); }
+    }
+    keyboard := FocusScope {
+        key-pressed(event) => {
+            if event.text == " " || event.text == Key.Return {
+                root.toggle();
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
+
+export component OvertonePanel inherits Rectangle {
+    background: #0a0403b0;
+    property <bool> plugins: false;
+    TouchArea { clicked => { App.overtone-open = false; } }
+    Fade {
+        rise: 10px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(parent.width - 56px, 680px);
+        height: min(parent.height - 64px, 556px);
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: Theme.outline-color-primary-disabled;
+            background: Theme.background-color-primary-enabled-content;
+            clip: true;
+            TouchArea { }
+            VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    Label {
+                        horizontal-stretch: 1;
+                        text: "Настройки Overtone";
+                        vertical-alignment: center;
+                        font-size: 23px;
+                        font-weight: 800;
+                    }
+                    PillButton { text: "Закрыть"; clicked => { App.overtone-open = false; } }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    PillButton { text: "Настройки мода"; primary: !root.plugins; clicked => { root.plugins = false; } }
+                    PillButton { text: "Плагины"; primary: root.plugins; clicked => { root.plugins = true; } }
+                }
+                if !root.plugins: ScrollView {
+                    horizontal-scrollbar-policy: always-off;
+                    content-width: self.visible-width;
+                    VerticalLayout {
+                        spacing: 12px;
+                        OptionRow {
+                            name: "Discord Rich Presence";
+                            description: App.discord-status != "" ? App.discord-status : "Показывает трек в профиле Discord.";
+                            key: "discord";
+                            enabled-option: App.discord-on;
+                        }
+                        Label { text: "Источник текстов"; font-weight: 700; }
+                        ComboBox {
+                            height: 38px;
+                            model: ["Яндекс Музыка", "LRCLIB", "Сначала Яндекс Музыка", "Сначала LRCLIB"];
+                            current-index: App.overtone-source;
+                            selected => { App.overtone-change("lyrics", self.current-index == 0 ? "0" :
+                                self.current-index == 1 ? "1" : self.current-index == 2 ? "2" : "3"); }
+                        }
+                        Hint { text: "Источник меняется сразу. SP Lyrics также может подобрать текст из LRCLIB, когда у Яндекса его нет."; }
+                    }
+                }
+                if root.plugins: ScrollView {
+                    horizontal-scrollbar-policy: always-off;
+                    content-width: self.visible-width;
+                    VerticalLayout {
+                        spacing: 10px;
+                        OptionRow {
+                            name: "FckCensor";
+                            author: "Haz · Воспроизведение";
+                            description: "Загружает полную версию из каталога перед воспроизведением. Применяется к новым загрузкам.";
+                            key: "fckcensor";
+                            enabled-option: App.overtone-fck;
+                        }
+                        OptionRow {
+                            name: "YandexMusicTime";
+                            author: "dobryjigrok и dieugh · Статистика";
+                            description: App.overtone-time-summary;
+                            key: "time";
+                            enabled-option: App.overtone-time;
+                        }
+                        OptionRow {
+                            name: "SP Lyrics";
+                            author: "savme / saveksme · Тексты";
+                            description: "Караоке со строками по времени, подсветкой и переходом к выбранной строке.";
+                            key: "spicy";
+                            enabled-option: App.overtone-spicy;
+                        }
+                        OptionRow {
+                            name: "Custom Fonts";
+                            author: "Overtone · Оформление";
+                            description: "Шрифт интерфейса применяется сразу. Файл из настроек лаунчера имеет приоритет.";
+                            key: "fonts";
+                            enabled-option: App.overtone-fonts;
+                        }
+                        if App.overtone-fonts: HorizontalLayout {
+                            spacing: 8px;
+                            family := LineEdit {
+                                height: 40px;
+                                horizontal-stretch: 1;
+                                text: App.overtone-family;
+                                placeholder-text: "Системное семейство";
+                                accepted => { App.overtone-change("font", self.text); }
+                            }
+                            PillButton { text: "Применить шрифт"; clicked => { App.overtone-change("font", family.text); } }
+                        }
+                    }
+                }
+                if App.overtone-feedback != "": Hint { text: App.overtone-feedback; }
+            }
+        }
+    }
+}

@@ -72,231 +72,402 @@ fn label(text: &str, class: &str) -> gtk::Label {
     label
 }
 
-pub fn present(app: &gtk::Application) {
-    if let Some(window) = app
-        .windows()
-        .into_iter()
-        .find(|window| window.widget_name() == "overtone-launcher")
-    {
-        window.present();
-        return;
-    }
-    let window = gtk::ApplicationWindow::builder()
-        .application(app)
-        .title("Overtone · Яндекс Музыка")
-        .default_width(690)
-        .default_height(485)
-        .build();
-    window.set_widget_name("overtone-launcher");
-    window.set_icon_name(Some(&overtone_core::project().id));
-    window.add_css_class("mod-launcher");
+fn text(value: &str, class: &str) -> gtk::Label {
+    let widget = label(value, class);
+    widget.set_xalign(0.0);
+    widget.set_wrap(true);
+    widget
+}
 
-    let screen = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    screen.add_css_class("launcher-screen");
+fn column(gap: i32) -> gtk::Box {
+    gtk::Box::new(gtk::Orientation::Vertical, gap)
+}
 
-    let top = gtk::Box::new(gtk::Orientation::Horizontal, 9);
-    top.add_css_class("launcher-top");
-    let logo = crate::branded_icon();
-    let name = label("Overtone", "launcher-wordmark");
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    let version = label(&format!("Версия {VERSION}"), "launcher-version");
-    top.append(&logo);
-    top.append(&name);
-    top.append(&spacer);
-    top.append(&version);
-    screen.append(&top);
-    let stack = gtk::Stack::builder()
+fn row(gap: i32) -> gtk::Box {
+    gtk::Box::new(gtk::Orientation::Horizontal, gap)
+}
+
+fn button(value: &str, class: &str) -> gtk::Button {
+    let button = gtk::Button::with_label(value);
+    button.add_css_class(class);
+    button
+}
+
+fn page(title: &str, caption: &str) -> (gtk::ScrolledWindow, gtk::Box) {
+    let body = column(18);
+    body.add_css_class("ot-page");
+    let heading = column(6);
+    heading.append(&text(title, "ot-page-title"));
+    heading.append(&text(caption, "ot-muted"));
+    body.append(&heading);
+    let scroll = gtk::ScrolledWindow::builder()
+        .hexpand(true)
         .vexpand(true)
-        .transition_type(gtk::StackTransitionType::Crossfade)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .child(&body)
         .build();
-    let tabs = gtk::StackSwitcher::new();
-    tabs.set_halign(gtk::Align::Center);
-    tabs.add_css_class("launcher-tabs");
-    tabs.set_stack(Some(&stack));
-    screen.append(&tabs);
-    let overview = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    stack.add_titled(&overview, Some("overview"), "Обзор");
-    let addons = plugins::page(plugins::Updates::new(&version));
-    stack.add_titled(&addons, Some("plugins"), "Плагины и обновления");
-    screen.append(&stack);
+    (scroll, body)
+}
 
-    let hero = gtk::Box::new(gtk::Orientation::Vertical, 13);
-    hero.add_css_class("launcher-hero");
-    hero.set_vexpand(true);
-    hero.set_valign(gtk::Align::Center);
-    let status = label("Поиск Яндекс Музыки…", "launcher-status");
-    status.set_halign(gtk::Align::Center);
-    let title = label("Яндекс Музыка\nс Overtone", "launcher-title");
-    title.set_justify(gtk::Justification::Center);
-    let subtitle = label(
-        "Discord RPC и тексты из LRCLIB.\nНастройки доступны в боковом меню Яндекс Музыки.",
-        "launcher-subtitle",
+#[derive(Clone, serde::Deserialize)]
+struct RustStatus {
+    supported: bool,
+    installed: Option<String>,
+    available: Option<String>,
+}
+
+fn artwork() -> gtk::DrawingArea {
+    let art = gtk::DrawingArea::new();
+    art.set_content_width(225);
+    art.set_content_height(200);
+    art.set_can_target(false);
+    art.set_draw_func(|_, context, width, height| {
+        let center = (f64::from(width) * 0.55, f64::from(height) * 0.46);
+        let radius = f64::from(width.min(height)) * 0.32;
+        context.set_line_width(1.0);
+        for stripe in 0..26 {
+            let y = f64::from(stripe) * radius * 2.0 / 25.0 - radius;
+            let half = (radius * radius - y * y).sqrt();
+            let alpha = 0.33 + 0.64 * ((y + radius) / (radius * 2.0));
+            context.set_source_rgba(1.0, 0.83, 0.72, alpha);
+            context.move_to(center.0 - half, center.1 + y);
+            for point in 1..=48 {
+                let phase = f64::from(point) / 48.0;
+                let x = half * (2.0 * phase - 1.0);
+                let wave =
+                    (phase * std::f64::consts::TAU).sin() * (1.0 - (y / radius).abs()) * 17.0;
+                context.line_to(center.0 + x, center.1 + y + wave);
+            }
+            let _ = context.stroke();
+        }
+        context.set_source_rgba(1.0, 0.92, 0.87, 0.85);
+        for (dx, dy) in [(0.41, -0.22), (-0.42, 0.31), (0.47, 0.17)] {
+            context.arc(
+                center.0 + dx * f64::from(width),
+                center.1 + dy * f64::from(height),
+                1.7,
+                0.0,
+                std::f64::consts::TAU,
+            );
+            let _ = context.fill();
+        }
+    });
+    art
+}
+
+fn overview() -> gtk::ScrolledWindow {
+    let (scroll, body) = page("Обзор", "Клиенты Яндекс Музыки и настройки Overtone.");
+    let hero = row(12);
+    hero.add_css_class("ot-hero");
+    let details = column(11);
+    details.set_hexpand(true);
+    details.set_valign(gtk::Align::Center);
+    let platform = text("RUST / LINUX X86_64", "ot-eyebrow");
+    let title = text("Яндекс Музыка\nна Rust", "ot-hero-title");
+    let info = text(
+        "Отдельный нативный клиент с Discord RPC и текстами LRCLIB.",
+        "ot-hero-note",
     );
-    subtitle.set_justify(gtk::Justification::Center);
-    subtitle.set_wrap(true);
-    hero.append(&status);
-    hero.append(&title);
-    hero.append(&subtitle);
+    let actions = row(8);
+    let primary = button("Проверяем сборку…", "ot-primary");
+    primary.set_sensitive(false);
+    let update = button("Обновить", "ot-hero-alt");
+    update.set_visible(false);
+    actions.append(&primary);
+    actions.append(&update);
+    let status = text("", "ot-hero-note");
+    details.append(&platform);
+    details.append(&title);
+    details.append(&info);
+    details.append(&actions);
+    details.append(&status);
+    hero.append(&details);
+    hero.append(&artwork());
+    body.append(&hero);
 
-    let launch = gtk::Button::new();
-    let button = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let button_text = gtk::Label::new(Some("Открыть Яндекс Музыку"));
-    let arrow = label("→", "launcher-arrow");
-    button.append(&button_text);
-    button.append(&arrow);
-    launch.set_child(Some(&button));
-    launch.set_halign(gtk::Align::Center);
-    launch.set_sensitive(false);
-    launch.add_css_class("launcher-launch");
-    hero.append(&launch);
-    overview.append(&hero);
+    let section = row(10);
+    let name = text("Настольный клиент", "ot-section");
+    name.set_hexpand(true);
+    section.append(&name);
+    body.append(&section);
+    let card = column(11);
+    card.add_css_class("ot-card");
+    let stock_head = row(12);
+    let icon = gtk::Image::from_icon_name("audio-x-generic-symbolic");
+    icon.add_css_class("ot-tile-icon");
+    icon.set_pixel_size(22);
+    stock_head.append(&icon);
+    let copy = column(4);
+    copy.set_hexpand(true);
+    copy.append(&text("Яндекс Музыка + Overtone", "ot-row-title"));
+    let stock_info = text("Проверяем установленный клиент…", "ot-muted");
+    copy.append(&stock_info);
+    stock_head.append(&copy);
+    let stock_open = button("Открыть", "ot-button");
+    stock_open.set_sensitive(false);
+    stock_head.append(&stock_open);
+    card.append(&stock_head);
+    let stock_status = text("", "ot-muted");
+    stock_status.set_visible(false);
+    card.append(&stock_status);
+    body.append(&card);
 
-    let message = label("", "launcher-message");
-    message.set_wrap(true);
-    message.set_justify(gtk::Justification::Center);
-    message.set_selectable(true);
-    overview.append(&message);
-
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    controls.add_css_class("launcher-controls");
-    controls.set_halign(gtk::Align::Center);
-    let check = gtk::Button::with_label("Проверить ещё раз");
-    check.add_css_class("launcher-check");
-    check.set_visible(false);
-    let restore = gtk::Button::with_label("Удалить мод");
-    restore.add_css_class("launcher-check");
-    restore.set_visible(false);
-    controls.append(&check);
-    controls.append(&restore);
-    overview.append(&controls);
-    window.set_child(Some(&screen));
-
-    let refresh = {
-        let launch = launch.downgrade();
-        let button_text = button_text.downgrade();
-        let check = check.downgrade();
-        let restore = restore.downgrade();
-        let status = status.downgrade();
-        let message = message.downgrade();
+    let rust = Rc::new(std::cell::RefCell::new(None::<RustStatus>));
+    let refresh_rust = {
+        let (state, primary, update, status) = (
+            rust.clone(),
+            primary.downgrade(),
+            update.downgrade(),
+            status.downgrade(),
+        );
         Rc::new(move || {
-            let Some(launch) = launch.upgrade() else {
+            let (state, primary, update, status) = (
+                state.clone(),
+                primary.clone(),
+                update.clone(),
+                status.clone(),
+            );
+            glib::MainContext::default().spawn_local(async move {
+                let (Some(primary), Some(update), Some(status)) =
+                    (primary.upgrade(), update.upgrade(), status.upgrade())
+                else {
+                    return;
+                };
+                match run("rust-status").await.and_then(|value| {
+                    serde_json::from_str::<RustStatus>(&value).map_err(|e| e.to_string())
+                }) {
+                    Ok(current) => {
+                        if let Some(version) = &current.installed {
+                            primary.set_label("Открыть Rust-клиент");
+                            status.set_label(&format!("Установлена версия {version}"));
+                        } else {
+                            primary.set_label("Скачать и установить");
+                            status.set_label(if current.available.is_some() {
+                                "Установка в профиль пользователя"
+                            } else if current.supported {
+                                "Пакет для этой сборки пока недоступен"
+                            } else {
+                                "Поддерживается Linux x86_64"
+                            });
+                        }
+                        primary.set_sensitive(
+                            current.installed.is_some() || current.available.is_some(),
+                        );
+                        update.set_visible(
+                            current.installed.is_some()
+                                && current.available.is_some()
+                                && current.installed != current.available,
+                        );
+                        state.replace(Some(current));
+                    }
+                    Err(error) => status.set_label(&error),
+                }
+            });
+        })
+    };
+    for (control, force_install) in [(&primary, false), (&update, true)] {
+        let (state, status, refresh, primary, update) = (
+            rust.clone(),
+            status.downgrade(),
+            refresh_rust.clone(),
+            primary.downgrade(),
+            update.downgrade(),
+        );
+        control.connect_clicked(move |_| {
+            let (Some(primary), Some(update), Some(status)) =
+                (primary.upgrade(), update.upgrade(), status.upgrade())
+            else {
                 return;
             };
-            let Some(button_text) = button_text.upgrade() else {
+            let installed = state
+                .borrow()
+                .as_ref()
+                .is_some_and(|item| item.installed.is_some());
+            let action = if installed && !force_install {
+                "rust-launch"
+            } else {
+                "rust-install"
+            };
+            status.set_label(if action == "rust-install" {
+                "Загружаем и проверяем сборку…"
+            } else {
+                "Открываем приложение…"
+            });
+            primary.set_sensitive(false);
+            update.set_sensitive(false);
+            let (status, refresh, primary, update) = (
+                status.clone(),
+                refresh.clone(),
+                primary.clone(),
+                update.clone(),
+            );
+            glib::MainContext::default().spawn_local(async move {
+                match run(action).await {
+                    Ok(_) => refresh(),
+                    Err(error) => {
+                        status.set_label(&error);
+                        primary.set_sensitive(true);
+                    }
+                }
+                update.set_sensitive(true);
+            });
+        });
+    }
+    let refresh_stock = {
+        let (open, info, status) = (
+            stock_open.downgrade(),
+            stock_info.downgrade(),
+            stock_status.downgrade(),
+        );
+        Rc::new(move || {
+            let (Some(open), Some(info), Some(status)) =
+                (open.upgrade(), info.upgrade(), status.upgrade())
+            else {
                 return;
             };
-            let Some(check) = check.upgrade() else { return };
-            let Some(restore) = restore.upgrade() else {
-                return;
-            };
-            let Some(status) = status.upgrade() else {
-                return;
-            };
-            let Some(message) = message.upgrade() else {
-                return;
-            };
-            launch.set_sensitive(false);
-            check.set_visible(false);
-            restore.set_visible(false);
-            status.set_label("Проверяем Яндекс Музыку…");
-            message.set_label("");
             glib::MainContext::default().spawn_local(async move {
                 match run("status").await {
                     Ok(value) => {
                         let (version, state) = value.split_once(' ').unwrap_or((&value, "ready"));
-                        let (heading, action) = match state {
-                            "installed" => {
-                                ("Overtone установлен".to_owned(), "Открыть Яндекс Музыку")
-                            }
-                            "update" => {
-                                ("Доступно обновление мода".to_owned(), "Обновить и открыть")
-                            }
-                            _ => (
-                                format!("Яндекс Музыка {version} найдена"),
-                                "Установить и открыть",
-                            ),
-                        };
-                        status.set_label(&heading);
-                        button_text.set_label(action);
-                        launch.set_sensitive(true);
-                        restore.set_visible(state != "ready");
-                        restore.set_sensitive(true);
+                        info.set_label(&format!("Electron {version} · плагины и настройки мода"));
+                        open.set_label(match state {
+                            "installed" => "Открыть",
+                            "update" => "Обновить и открыть",
+                            _ => "Установить мод",
+                        });
+                        open.set_sensitive(true);
+                        status.set_visible(false);
                     }
                     Err(error) => {
-                        status.set_label("Требуется проверка клиента");
-                        check.set_visible(true);
-                        message.set_label(&error);
+                        info.set_label("Клиент Electron не найден");
+                        status.set_label(&error);
+                        status.set_visible(true);
+                        open.set_sensitive(false);
                     }
                 }
             });
         })
     };
-    refresh();
-    let check_again = refresh.clone();
-    check.connect_clicked(move |_| check_again());
-
-    let weak = window.downgrade();
-    let launch_status = status.clone();
-    let launch_message = message.clone();
-    let restore_control = restore.clone();
-    launch.connect_clicked(move |launch| {
-        launch.set_sensitive(false);
-        restore_control.set_sensitive(false);
-        button_text.set_label("Открываем…");
-        launch_status.set_label("Подключаем Overtone");
-        launch_message.set_label("");
-        let (launch, button_text, status, message, restore, weak) = (
-            launch.clone(),
-            button_text.clone(),
-            launch_status.clone(),
-            launch_message.clone(),
-            restore_control.clone(),
-            weak.clone(),
-        );
+    refresh_stock();
+    let (status, refresh) = (stock_status, refresh_stock);
+    stock_open.connect_clicked(move |widget| {
+        status.set_label("Открываем Яндекс Музыку…");
+        status.set_visible(true);
+        widget.set_sensitive(false);
+        let (status, refresh, widget) = (status.clone(), refresh.clone(), widget.clone());
         glib::MainContext::default().spawn_local(async move {
             match run("launch").await {
-                Ok(_) => {
-                    if let Some(window) = weak.upgrade() {
-                        window.close();
-                    }
-                }
-                Err(error) => {
-                    status.set_label("Запуск не подтверждён");
-                    message.set_label(&error);
-                    button_text.set_label("Повторить запуск");
-                    launch.set_sensitive(true);
-                    restore.set_sensitive(true);
-                }
-            }
-        });
-    });
-    let launch_control = launch.downgrade();
-    restore.connect_clicked(move |restore| {
-        let Some(launch) = launch_control.upgrade() else {
-            return;
-        };
-        launch.set_sensitive(false);
-        restore.set_sensitive(false);
-        status.set_label("Удаляем мод и возвращаем исходный архив…");
-        message.set_label("");
-        let (restore, status, message, refresh) = (
-            restore.clone(),
-            status.clone(),
-            message.clone(),
-            refresh.clone(),
-        );
-        glib::MainContext::default().spawn_local(async move {
-            match run("restore").await {
                 Ok(_) => refresh(),
                 Err(error) => {
-                    status.set_label("Исходный архив не восстановлен");
-                    message.set_label(&error);
-                    launch.set_sensitive(true);
-                    restore.set_sensitive(true);
+                    status.set_label(&error);
+                    widget.set_sensitive(true);
                 }
             }
         });
     });
+    scroll.connect_map(move |_| refresh_rust());
+    scroll
+}
+
+pub fn present(app: &gtk::Application, selected: Option<&str>) {
+    if let Some(window) = app
+        .windows()
+        .into_iter()
+        .find(|window| window.widget_name() == "overtone-launcher")
+    {
+        if let Some(name) = selected
+            && let Some(screen) = window.child().and_downcast::<gtk::Box>()
+            && let Some(stack) = screen.last_child().and_downcast::<gtk::Stack>()
+            && stack.child_by_name(name).is_some()
+        {
+            stack.set_visible_child_name(name);
+        }
+        window.present();
+        return;
+    }
+    let window = gtk::ApplicationWindow::builder()
+        .application(app)
+        .title("Overtone")
+        .default_width(1110)
+        .default_height(690)
+        .build();
+    window.set_widget_name("overtone-launcher");
+    window.set_icon_name(Some(&overtone_core::project().id));
+    window.add_css_class("mod-launcher");
+    let chrome = gtk::HeaderBar::new();
+    chrome.set_title_widget(Some(&label("Overtone", "ot-chrome-label")));
+    window.set_titlebar(Some(&chrome));
+
+    let screen = row(0);
+    let sidebar = column(8);
+    sidebar.add_css_class("ot-sidebar");
+    let brand = row(10);
+    brand.add_css_class("ot-brand");
+    brand.append(&crate::branded_icon());
+    brand.append(&text("Overtone", "ot-brand-title"));
+    sidebar.append(&brand);
+
+    let stack = gtk::Stack::builder()
+        .hexpand(true)
+        .vexpand(true)
+        .transition_type(gtk::StackTransitionType::Crossfade)
+        .transition_duration(150)
+        .build();
+    let version = text(&format!("Версия {VERSION}"), "ot-version");
+    stack.add_named(&overview(), Some("overview"));
+    stack.add_named(&plugins::catalog(), Some("plugins"));
+    stack.add_named(&plugins::activity(), Some("activity"));
+    stack.add_named(&plugins::settings(&version), Some("settings"));
+    let mut nav = Vec::new();
+    for (id, title, icon) in [
+        ("overview", "Обзор", "go-home-symbolic"),
+        ("plugins", "Плагины", "application-x-addon-symbolic"),
+        ("activity", "Статистика", "document-open-recent-symbolic"),
+        ("settings", "Настройки", "preferences-system-symbolic"),
+    ] {
+        let action = gtk::Button::new();
+        action.add_css_class("ot-nav");
+        let content = row(9);
+        let glyph = gtk::Image::from_icon_name(icon);
+        glyph.set_valign(gtk::Align::Center);
+        content.append(&glyph);
+        content.append(&text(title, "ot-nav-label"));
+        action.set_child(Some(&content));
+        let weak = stack.downgrade();
+        action.connect_clicked(move |_| {
+            if let Some(stack) = weak.upgrade() {
+                stack.set_visible_child_name(id);
+            }
+        });
+        sidebar.append(&action);
+        nav.push((id, action));
+    }
+    stack.connect_visible_child_name_notify(move |stack| {
+        for (name, button) in &nav {
+            if stack.visible_child_name().as_deref() == Some(*name) {
+                button.add_css_class("current");
+            } else {
+                button.remove_css_class("current");
+            }
+        }
+    });
+    let fill = column(0);
+    fill.set_vexpand(true);
+    sidebar.append(&fill);
+    let manager = button("Менеджер плееров", "ot-nav");
+    manager.connect_clicked(|_| {
+        let _ = Command::new(std::env::current_exe().unwrap_or_else(|_| "overtone".into()))
+            .arg("--manager")
+            .spawn();
+    });
+    sidebar.append(&manager);
+    sidebar.append(&version);
+    screen.append(&sidebar);
+    screen.append(&stack);
+    if let Some(name) = selected.filter(|name| stack.child_by_name(name).is_some()) {
+        stack.set_visible_child_name(name);
+    }
+    stack.notify("visible-child-name");
+    window.set_child(Some(&screen));
     window.present();
 }

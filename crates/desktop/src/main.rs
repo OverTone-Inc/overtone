@@ -543,7 +543,8 @@ fn main() -> glib::ExitCode {
         let args = args.arguments();
         let flag = args.get(1).and_then(|s| s.to_str());
         match flag {
-            Some("--launcher") => launcher::present(app),
+            Some("--launcher") => launcher::present(app, args.get(2).and_then(|s| s.to_str())),
+            Some("--manager") => hub.open_manager(None),
             Some("--mini") => hub.open_mini(),
             Some("--quit") => {
                 hub.save_mini();
@@ -556,7 +557,7 @@ fn main() -> glib::ExitCode {
             }
             Some("--version") => println!("{} {}", project().name, env!("CARGO_PKG_VERSION")),
             Some("--page") => hub.open_manager(args.get(2).and_then(|s| s.to_str())),
-            _ => hub.open_manager(None),
+            _ => launcher::present(app, None),
         }
         glib::ExitCode::SUCCESS
     });
